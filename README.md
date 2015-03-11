@@ -47,6 +47,6 @@ We provide a bash script named ``runwotkitdemo.sh'' you can use to deploy at boo
 Then you can add the following line to your crontab via ```sudo crontab -e```, which will boot the
 
 ```
-@reboot sudo sh /home/pi/wotkitdemo/runwotkdemo.sh > /home/pi/wotkitdemo/logs/cronlog 2>&1 &
+@reboot sudo sh /home/pi/wotkitdemo/runwotkitdemo.sh > /home/pi/wotkitdemo/logs/cronlog 2>&1 &
 ```
 
