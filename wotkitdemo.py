@@ -29,12 +29,14 @@ def getDHT(sensor_data):
     humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_SENSOR_PIN)
     sensor_data['temperature'] = '%.2f' % temperature
     sensor_data['humidity'] = '%.2f' % humidity
-
+ 
 def getLight(sensor_data):
-    light = RCtime(LIGHT_SENSOR_PIN)
+    chargeTime = RCtime(LIGHT_SENSOR_PIN)
+    # transorming time in capacitor charge to light values
+    light = (  chargeTime * -1 ) + 200000
     sensor_data['light'] = light
     sensor_data['value'] = light
-    #TODO: wait times are too high. 
+    #TODO: wait times are too high.
 
 # Utility function to measure analogue sensors via digital pins
 # it charges a capacitor and measures the time it takes to uncharge
@@ -77,10 +79,10 @@ def sendData():
         sensor_data_str = json.dumps(sensor_data)
 
         # write to serial port
-        #print sensor_data_str+'\n'
         ser.write(sensor_data_str+'\n')
         time.sleep(5)
-        #sys.stdout.flush() #when running in background flush to logs
+        print sensor_data_str+'\n'
+        sys.stdout.flush() #when running in background flush to logs
 
 def serial_on():
     return os.path.exists(SERIAL_PORT)    
