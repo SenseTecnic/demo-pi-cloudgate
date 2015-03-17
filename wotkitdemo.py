@@ -13,16 +13,14 @@ import os
 
 # This is the device name for CloudGate, making sure we only send to this device
 SERIAL_PORT = '/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0'
-
-#TODO: you can configure different pins here
 DHT_SENSOR = Adafruit_DHT.DHT11
 DHT_SENSOR_PIN = 17
 LIGHT_SENSOR_PIN = 4
 SHUTDOWN_PIN = 18
-
-# Tell the GPIO library to use Broadcom GPIO references, for light sensor
+# Tell the GPIO library to use Broadcom GPIO references
+# For light sensor
 GPIO.setmode(GPIO.BCM)
-# Configure shutdown pin to be an input 
+# For the shutdown pin
 GPIO.setup(SHUTDOWN_PIN, GPIO.IN)
 
 ser = serial.Serial(SERIAL_PORT)
@@ -35,6 +33,7 @@ def getDHT(sensor_data):
 def getLight(sensor_data):
     light = RCtime(LIGHT_SENSOR_PIN)
     sensor_data['light'] = light
+    sensor_data['value'] = light
     #TODO: wait times are too high. 
 
 # Utility function to measure analogue sensors via digital pins
@@ -57,10 +56,12 @@ def RCtime (PiPin):
 def sendData():
     while 1:
 
+        #we will be setting value to light as it's easy to visualize
         sensor_data = {
              "temperature":"0.0",
              "humidity":"0.0",
-             "light":"0"
+             "light":"0",
+             "value":"0"
         }
 
         #check for shutdown
@@ -75,10 +76,11 @@ def sendData():
 	getLight(sensor_data)
         sensor_data_str = json.dumps(sensor_data)
 
+        # write to serial port
         #print sensor_data_str+'\n'
-        #sys.stdout.flush() #when running in background flush to logs
         ser.write(sensor_data_str+'\n')
         time.sleep(5)
+        #sys.stdout.flush() #when running in background flush to logs
 
 def serial_on():
     return os.path.exists(SERIAL_PORT)    
@@ -90,7 +92,7 @@ def main():
             print "Waiting for Serial..."
             sys.stdout.flush() 
             ison = serial_on()
-            time.sleep(20)
+            time.sleep(10)
         except:
             pass
 
