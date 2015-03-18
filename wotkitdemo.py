@@ -8,22 +8,30 @@ import json
 import sys
 import Adafruit_DHT
 import RPi.GPIO as GPIO, time
-#import os.path
 import os
+import threading
+from Queue import Queue
 
 # This is the device name for CloudGate, making sure we only send to this device
 SERIAL_PORT = '/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0'
 DHT_SENSOR = Adafruit_DHT.DHT11
 DHT_SENSOR_PIN = 17
 LIGHT_SENSOR_PIN = 4
+LED_ACTUATOR_PIN = 24
 SHUTDOWN_PIN = 18
 # Tell the GPIO library to use Broadcom GPIO references
-# For light sensor
 GPIO.setmode(GPIO.BCM)
-# For the shutdown pin
 GPIO.setup(SHUTDOWN_PIN, GPIO.IN)
+GPIO.setup(LED_ACTUATOR_PIN, GPIO.OUT)
 
+#SETUP SERIAL
 ser = serial.Serial(SERIAL_PORT)
+ser.timeout = 10;
+
+#THREAD AND QUEUE SETUP
+serial_in_queue = Queue(maxsize=0)
+serial_out_queue = Queue(maxsize=0)
+num_threads = 10
 
 def getDHT(sensor_data):
     humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_SENSOR_PIN)
@@ -36,7 +44,6 @@ def getLight(sensor_data):
     light = (  chargeTime * -1 ) + 200000
     sensor_data['light'] = light
     sensor_data['value'] = light
-    #TODO: wait times are too high.
 
 # Utility function to measure analogue sensors via digital pins
 # it charges a capacitor and measures the time it takes to uncharge
@@ -55,34 +62,75 @@ def RCtime (PiPin):
       measurement += 1
     return measurement
 
-def sendData():
-    while 1:
+# A thread to wrap up serial writes and reads.
+# class is json agnostic, so data should be formatted before being put into:
+# serial_in_queue and serial_out_queue
+class serialThread (threading.Thread):
+    def __init__(self, serial_port):
+        threading.Thread.__init__(self)
+        self.ser = serial.Serial(serial_port)
 
+    def run(self):
+        while True:
+            
+            line_in = self.ser.readline()
+            if line_in:
+                serial_in_queue.put(line_in)
+
+            line_out = serial_out_queue.get()        
+            if line_out:
+                self.ser.write(line_out)
+            serial_out_queue.task_done()
+
+class actuatorsThread(threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self)
+
+    def run(self):
+        while True:
+            line = serial_in_queue.get()
+            serial_in_queue.task_done()
+
+            #print line
+            #sys.stdout.flush()
+            if line:
+                data = json.loads(line)
+                if data:
+                    if data[0]['button'] == 'on':
+                        GPIO.output(LED_ACTUATOR_PIN,True)
+                    if data[0]['button'] == 'off':
+                        GPIO.output(LED_ACTUATOR_PIN,False)
+
+class sensorsThread(threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self)
         #we will be setting value to light as it's easy to visualize
-        sensor_data = {
+        self.sensor_data = {
              "temperature":"0.0",
              "humidity":"0.0",
              "light":"0",
              "value":"0"
         }
 
-        #check for shutdown
-        if(GPIO.input(SHUTDOWN_PIN)):
-            print "Shutting down"
-            sys.stdout.flush()    
-            os.system("sudo shutdown -h now") # Send shutdown command to os
-            break
+    def run(self):
+        while True:
 
-        #get data
-        getDHT(sensor_data)
-	getLight(sensor_data)
-        sensor_data_str = json.dumps(sensor_data)
+            #check for shutdown
+            if(GPIO.input(SHUTDOWN_PIN)):
+                print "Shutting down"
+                sys.stdout.flush()    
+                os.system("sudo shutdown -h now") # Send shutdown command to os
+                break
 
-        # write to serial port
-        ser.write(sensor_data_str+'\n')
-        time.sleep(5)
-        print sensor_data_str+'\n'
-        sys.stdout.flush() #when running in background flush to logs
+            #get sensor data
+            getDHT(self.sensor_data)
+    	    getLight(self.sensor_data)
+            sensor_data_str = json.dumps(self.sensor_data)
+            serial_out_queue.put(sensor_data_str+'\n')
+
+            time.sleep(3)
 
 def serial_on():
     return os.path.exists(SERIAL_PORT)    
@@ -94,13 +142,24 @@ def main():
             print "Waiting for Serial..."
             sys.stdout.flush() 
             ison = serial_on()
-            time.sleep(10)
+            time.sleep(5)
         except:
             pass
 
-    print "Sending Data on serial %s" % SERIAL_PORT
+    print "Using serial %s" % SERIAL_PORT
     sys.stdout.flush() 
-    sendData();
+
+    serial_thread = serialThread(SERIAL_PORT)
+    serial_thread.start()
+
+    sensors_thread = sensorsThread()
+    sensors_thread.start()
+
+    actuators_thread = actuatorsThread()
+    actuators_thread.start()
+
+    serial_in_queue.join()
+    serial_out_queue.join()
     
 if __name__ == "__main__":
     main()
