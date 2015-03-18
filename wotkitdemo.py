@@ -91,16 +91,18 @@ class actuatorsThread(threading.Thread):
         while True:
             line = serial_in_queue.get()
             serial_in_queue.task_done()
-
-            #print line
-            #sys.stdout.flush()
             if line:
                 data = json.loads(line)
                 if data:
-                    if data[0]['button'] == 'on':
-                        GPIO.output(LED_ACTUATOR_PIN,True)
-                    if data[0]['button'] == 'off':
-                        GPIO.output(LED_ACTUATOR_PIN,False)
+                    for event in data:
+                        try:
+                            button = data[0]['button']                                       
+                            if button == 'on':
+                                GPIO.output(LED_ACTUATOR_PIN,True)
+                            if button == 'off':
+                                GPIO.output(LED_ACTUATOR_PIN,False)
+                        except KeyError: #if another control is sent (e.g. slider)
+                            "Do Nothing"
 
 class sensorsThread(threading.Thread):
 
